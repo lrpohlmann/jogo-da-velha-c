@@ -129,6 +129,17 @@ bool CQL_VitoriaFoiObtida(char cerquilha[3][3]) {
   return false;
 }
 
+bool CQL_JogoEmpatado(char cerquilha[3][3]) {
+  for (int i = 0; i < 3; i++) {
+    for (int j = 0; j < 3; j++) {
+      if (cerquilha[i][j] == ' ') {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
 void CTX_Init(ContextoJogo *ctx) {
   for (int i = 0; i < 3; i++) {
     for (int j = 0; j < 3; j++) {
@@ -183,6 +194,8 @@ void MSG_Vitoria(ContextoJogo *ctx) {
   MSG_Colocar(ctx, msg_marcar);
 }
 
+void MSG_Empate(ContextoJogo *ctx) { MSG_Colocar(ctx, "Jogo empatado."); }
+
 void MSG_Print(ContextoJogo *ctx) {
   for (int i = 0; i < TAMANHO_MENSAGEM; i++) {
     printf("-");
@@ -203,7 +216,10 @@ void PrintJogo(ContextoJogo *ctx) {
   printf("Vez do %c\n", ctx->vez_do_jogador);
   CQL_Print(ctx->cerquilha, &ctx->posicao_atual);
   MSG_Print(ctx);
+  printf("\n");
 }
+
+void UI_PrintComandos(char *comandos) { printf("%s", comandos); }
 
 void TerminalReset() { tcsetattr(STDIN_FILENO, TCSAFLUSH, &orig_termios); }
 
@@ -217,16 +233,12 @@ void TerminalSetup() {
   tcsetattr(STDIN_FILENO, TCSAFLUSH, &term_alterado);
 }
 
-//
-// Main
-//
-int main() {
-  TerminalSetup();
-
+void Jogo() {
   ContextoJogo ctx;
   CTX_Init(&ctx);
   write(STDIN_FILENO, "\x1b[2J", 4);
-  CQL_Print(ctx.cerquilha, &ctx.posicao_atual);
+  PrintJogo(&ctx);
+  UI_PrintComandos("<Setas> - Mover | <Enter> - Marcar | q - Sair\n");
 
   while (1) {
     int n;
@@ -237,13 +249,20 @@ int main() {
       }
     }
     if (c == 'q') {
-      return 0;
+      exit(0);
     } else if (c == '\n') {
       if (CQL_Marcar(ctx.cerquilha, &ctx.posicao_atual, ctx.vez_do_jogador)) {
         MSG_UltimaJogada(&ctx);
         if (CQL_VitoriaFoiObtida(ctx.cerquilha)) {
           MSG_Vitoria(&ctx);
-          break;
+          PrintJogo(&ctx);
+          return;
+        }
+
+        if (CQL_JogoEmpatado(ctx.cerquilha)) {
+          MSG_Empate(&ctx);
+          PrintJogo(&ctx);
+          return;
         }
 
         if (ctx.vez_do_jogador == JOGADOR_1) {
@@ -280,8 +299,42 @@ int main() {
     // Print
     //
     PrintJogo(&ctx);
+    UI_PrintComandos("<Setas> - Mover | <Enter> - Marcar | q - Sair\n");
   }
-  PrintJogo(&ctx);
+}
 
+bool NovoJogo() {
+  printf("\n");
+  printf("Novo Jogo? <Enter> - Sim, <q> - Não\n");
+  printf("\n");
+
+  while (1) {
+    int n;
+    char c;
+    while ((n = read(STDIN_FILENO, &c, 1)) != 1) {
+      if (n == -1 && errno != EAGAIN) {
+        perror("read");
+      }
+    }
+
+    if (c == 'q') {
+      return false;
+    } else if (c == '\n') {
+      return true;
+    }
+  }
+}
+
+//
+// Main
+//
+int main() {
+  TerminalSetup();
+
+  bool jogar = true;
+  while (jogar) {
+    Jogo();
+    jogar = NovoJogo();
+  }
   return 0;
 }
