@@ -8,7 +8,6 @@
 
 #define JOGADOR_1 'X'
 #define JOGADOR_2 'O'
-#define TAMANHO_MENSAGEM 21
 
 //
 // typedefs
@@ -29,7 +28,6 @@ typedef struct {
   char vez_do_jogador;
   Coord posicao_atual;
   char cerquilha[3][3];
-  char mensagens[3][TAMANHO_MENSAGEM];
 } ContextoJogo;
 
 //
@@ -42,9 +40,23 @@ Movimentos MOVIMENTOS = {.cima = {.y = -1, .x = 0},
 
 struct termios orig_termios;
 
+enum CondicaoJogo {
+  EM_ANDAMENTO = 0,
+  VITORIA,
+  EMPATE,
+};
 //
 // Funções
 //
+
+void crash(const char *e) {
+  write(STDOUT_FILENO, "\x1b[2J", 4);
+  write(STDOUT_FILENO, "\x1b[H", 3);
+
+  perror(e);
+  exit(1);
+}
+
 void POS_Mover(Coord *posicao, Coord *direcao) {
   int x_apos_movimento = posicao->x + direcao->x;
   int y_apos_movimento = posicao->y + direcao->y;
@@ -68,76 +80,56 @@ bool CQL_Marcar(char cerquilha[3][3], Coord *posicao_escolhida, char marcador) {
   return false;
 }
 
-void CQL_Print(char cerquilha[3][3], Coord *posicao_escolhida) {
-  for (int i = 0; i < 3; i++) {
-    for (int j = 0; j < 3; j++) {
-      printf("---");
-    }
-    printf("\n");
-    for (int j = 0; j < 3; j++) {
-      if ((i == posicao_escolhida->y) && (j == posicao_escolhida->x)) {
-        printf(">%c<", cerquilha[i][j]);
-      } else {
-        printf("|%c|", cerquilha[i][j]);
+enum CondicaoJogo VitoriaOuEmpate(ContextoJogo *ctx) {
+  {
+    char x;
+    char y;
+    char z;
+    for (int i = 0; i < 3; i++) {
+      x = ctx->cerquilha[i][0];
+      y = ctx->cerquilha[i][1];
+      z = ctx->cerquilha[i][2];
+
+      if ((x != ' ') && (x == y) && (y == z) && (z == x)) {
+        return VITORIA;
+      }
+
+      x = ctx->cerquilha[0][i];
+      y = ctx->cerquilha[1][i];
+      z = ctx->cerquilha[2][i];
+
+      if ((x != ' ') && (x == y) && (y == z) && (z == x)) {
+        return VITORIA;
       }
     }
-    printf("\n");
-  }
 
-  for (int j = 0; j < 3; j++) {
-    printf("---");
-  }
-  printf("\n");
-}
-
-bool CQL_VitoriaFoiObtida(char cerquilha[3][3]) {
-  char x;
-  char y;
-  char z;
-  for (int i = 0; i < 3; i++) {
-    x = cerquilha[i][0];
-    y = cerquilha[i][1];
-    z = cerquilha[i][2];
-
+    x = ctx->cerquilha[0][0];
+    y = ctx->cerquilha[1][1];
+    z = ctx->cerquilha[2][2];
     if ((x != ' ') && (x == y) && (y == z) && (z == x)) {
-      return true;
+      return VITORIA;
     }
 
-    x = cerquilha[0][i];
-    y = cerquilha[1][i];
-    z = cerquilha[2][i];
-
+    x = ctx->cerquilha[0][2];
+    y = ctx->cerquilha[1][1];
+    z = ctx->cerquilha[2][0];
     if ((x != ' ') && (x == y) && (y == z) && (z == x)) {
-      return true;
+      return VITORIA;
     }
   }
 
-  x = cerquilha[0][0];
-  y = cerquilha[1][1];
-  z = cerquilha[2][2];
-  if ((x != ' ') && (x == y) && (y == z) && (z == x)) {
-    return true;
-  }
-
-  x = cerquilha[0][2];
-  y = cerquilha[1][1];
-  z = cerquilha[2][0];
-  if ((x != ' ') && (x == y) && (y == z) && (z == x)) {
-    return true;
-  }
-
-  return false;
-}
-
-bool CQL_JogoEmpatado(char cerquilha[3][3]) {
-  for (int i = 0; i < 3; i++) {
-    for (int j = 0; j < 3; j++) {
-      if (cerquilha[i][j] == ' ') {
-        return false;
+  {
+    for (int i = 0; i < 3; i++) {
+      for (int j = 0; j < 3; j++) {
+        if (ctx->cerquilha[i][j] == ' ') {
+          return EM_ANDAMENTO;
+        }
       }
     }
+    return EMPATE;
   }
-  return true;
+
+  return EM_ANDAMENTO;
 }
 
 void CTX_Init(ContextoJogo *ctx) {
@@ -151,77 +143,47 @@ void CTX_Init(ContextoJogo *ctx) {
   ctx->posicao_atual.x = 1;
 
   ctx->vez_do_jogador = JOGADOR_1;
-
-  for (int i = 0; i < 3; i++) {
-    for (int j = 0; j < TAMANHO_MENSAGEM; j++) {
-      ctx->mensagens[i][j] = ' ';
-    }
-    ctx->mensagens[i][TAMANHO_MENSAGEM - 1] = '\0';
-  }
-}
-
-void MSG_Colocar(ContextoJogo *ctx, char *mensagem) {
-  for (int i = 0; i < TAMANHO_MENSAGEM; i++) {
-    ctx->mensagens[2][i] = ctx->mensagens[1][i];
-    ctx->mensagens[1][i] = ctx->mensagens[0][i];
-  }
-
-  int k = 0;
-  while (mensagem[k] != '\0') {
-    ctx->mensagens[0][k] = mensagem[k];
-    k++;
-  }
-  for (int i = k; i < TAMANHO_MENSAGEM; i++) {
-    ctx->mensagens[0][i] = ' ';
-  }
-  ctx->mensagens[0][TAMANHO_MENSAGEM - 1] = '\0';
-}
-
-void MSG_UltimaJogada(ContextoJogo *ctx) {
-  char msg_marcar[TAMANHO_MENSAGEM];
-  char t[] = "%c - %d %d";
-  snprintf(msg_marcar, TAMANHO_MENSAGEM, t, ctx->vez_do_jogador,
-           ctx->posicao_atual.y, ctx->posicao_atual.x);
-
-  MSG_Colocar(ctx, msg_marcar);
-}
-
-void MSG_Vitoria(ContextoJogo *ctx) {
-  char msg_marcar[TAMANHO_MENSAGEM];
-  char t[] = "%c Venceu!";
-  snprintf(msg_marcar, TAMANHO_MENSAGEM, t, ctx->vez_do_jogador);
-
-  MSG_Colocar(ctx, msg_marcar);
-}
-
-void MSG_Empate(ContextoJogo *ctx) { MSG_Colocar(ctx, "Jogo empatado."); }
-
-void MSG_Print(ContextoJogo *ctx) {
-  for (int i = 0; i < TAMANHO_MENSAGEM; i++) {
-    printf("-");
-  }
-  printf("\n");
-  for (int i = 0; i < 3; i++) {
-    printf("%s\n", ctx->mensagens[i]);
-  }
-  for (int i = 0; i < TAMANHO_MENSAGEM; i++) {
-    printf("-");
-  }
-  printf("\n");
 }
 
 void PrintJogo(ContextoJogo *ctx) {
   write(STDIN_FILENO, "\x1b[2J", 4);
-  printf("\n");
-  printf("Vez do %c\n", ctx->vez_do_jogador);
-  CQL_Print(ctx->cerquilha, &ctx->posicao_atual);
-  MSG_Print(ctx);
-  printf("\n");
+  write(STDIN_FILENO, "\x1b[1;1H", 6);
+  int buffer_size = 126;
+  char cql[buffer_size];
+  int i =
+      sprintf(cql,
+              "Vez do "
+              "%c\n---------\n|%c||%c||%c|\n---------\n|%c||%c||%c|\n---------"
+              "\n|%c||%c||%c"
+              "|\n---------\n"
+              "<Setas> - Mover | <Enter> - Marcar | q - Sair\n",
+              ctx->vez_do_jogador, ctx->cerquilha[0][0], ctx->cerquilha[0][1],
+              ctx->cerquilha[0][2], ctx->cerquilha[1][0], ctx->cerquilha[1][1],
+              ctx->cerquilha[1][2], ctx->cerquilha[2][0], ctx->cerquilha[2][1],
+              ctx->cerquilha[2][2]);
+  if (i < 0) {
+    crash("sprintf");
+  }
+
+  int bytes_escritos = write(STDOUT_FILENO, &cql, buffer_size);
+  if (bytes_escritos != buffer_size) {
+    crash("write");
+  }
+
+  {
+    int cursor_linha = 3 + 2 * ctx->posicao_atual.y;
+    int cursor_coluna = 2 + 3 * ctx->posicao_atual.x;
+    char comando_posicao_cursor[7];
+    sprintf(comando_posicao_cursor, "\x1b[%d;%dH", cursor_linha, cursor_coluna);
+    write(STDIN_FILENO, comando_posicao_cursor, 6);
+  }
 }
 
-void UI_PrintComandos(char *comandos) { printf("%s", comandos); }
-
-void TerminalReset() { tcsetattr(STDIN_FILENO, TCSAFLUSH, &orig_termios); }
+void TerminalReset() {
+  write(STDIN_FILENO, "\x1b[2J", 4);
+  write(STDIN_FILENO, "\x1b[1;1H", 6);
+  tcsetattr(STDIN_FILENO, TCSAFLUSH, &orig_termios);
+}
 
 void TerminalSetup() {
   tcgetattr(STDIN_FILENO, &orig_termios);
@@ -236,31 +198,21 @@ void TerminalSetup() {
 void Jogo() {
   ContextoJogo ctx;
   CTX_Init(&ctx);
-  write(STDIN_FILENO, "\x1b[2J", 4);
   PrintJogo(&ctx);
-  UI_PrintComandos("<Setas> - Mover | <Enter> - Marcar | q - Sair\n");
 
   while (1) {
     int n;
     char c;
     while ((n = read(STDIN_FILENO, &c, 1)) != 1) {
       if (n == -1 && errno != EAGAIN) {
-        perror("read");
+        crash("read");
       }
     }
     if (c == 'q') {
       exit(0);
     } else if (c == '\n') {
       if (CQL_Marcar(ctx.cerquilha, &ctx.posicao_atual, ctx.vez_do_jogador)) {
-        MSG_UltimaJogada(&ctx);
-        if (CQL_VitoriaFoiObtida(ctx.cerquilha)) {
-          MSG_Vitoria(&ctx);
-          PrintJogo(&ctx);
-          return;
-        }
-
-        if (CQL_JogoEmpatado(ctx.cerquilha)) {
-          MSG_Empate(&ctx);
+        if (VitoriaOuEmpate(&ctx) != EM_ANDAMENTO) {
           PrintJogo(&ctx);
           return;
         }
@@ -274,8 +226,12 @@ void Jogo() {
     } else if (c == '\x1b') {
       char seq[3];
 
-      read(STDIN_FILENO, &seq[0], 1);
-      read(STDIN_FILENO, &seq[1], 1);
+      if (read(STDIN_FILENO, &seq[0], 1) == -1) {
+        crash("read");
+      };
+      if (read(STDIN_FILENO, &seq[1], 1) == -1) {
+        crash("read");
+      }
 
       if (seq[0] == '[') {
         switch (seq[1]) {
@@ -295,25 +251,20 @@ void Jogo() {
       }
     }
 
-    //
-    // Print
-    //
     PrintJogo(&ctx);
-    UI_PrintComandos("<Setas> - Mover | <Enter> - Marcar | q - Sair\n");
   }
 }
 
 bool NovoJogo() {
   printf("\n");
   printf("Novo Jogo? <Enter> - Sim, <q> - Não\n");
-  printf("\n");
 
   while (1) {
     int n;
     char c;
     while ((n = read(STDIN_FILENO, &c, 1)) != 1) {
       if (n == -1 && errno != EAGAIN) {
-        perror("read");
+        crash("read");
       }
     }
 
